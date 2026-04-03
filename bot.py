@@ -1,115 +1,60 @@
-import asyncio
 import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-from aiogram.filters import Command
+from aiogram.types import ReplyKeyboardMarkup
+from aiogram.utils import executor
 
 TOKEN = os.getenv("TOKEN")
-ADMIN_ID = 5585690159  # твой ID
+ADMIN_ID = 5585690159
 
 bot = Bot(token=TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(bot)
 
-# Хранилище заявок
+kb = ReplyKeyboardMarkup(resize_keyboard=True)
+kb.add("🚀 Клиенты", "💼 Возможности")
+kb.add("💰 Цена", "📩 Связь")
+kb.add("📝 Заявка")
+
 user_data = {}
 
-# Клавиатура
-kb = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="📌 О нас")],
-        [KeyboardButton(text="💼 Услуги")],
-        [KeyboardButton(text="💰 Цены")],
-        [KeyboardButton(text="📞 Контакты")],
-        [KeyboardButton(text="📝 Оставить заявку")]
-    ],
-    resize_keyboard=True
-)
-
-# Старт
-@dp.message(Command("start"))
+@dp.message_handler(commands=['start'])
 async def start(message: types.Message):
-    await message.answer(
-        "👋 Привет! Рад тебя видеть\n\n"
-        "Я помогаю автоматизировать бизнес с помощью Telegram-ботов 🤖\n\n"
-        "С ботом ты сможешь:\n"
-        "— принимать заявки 24/7\n"
-        "— экономить время\n"
-        "— увеличивать прибыль 💰\n\n"
-        "👇 Выбери, что тебя интересует",
-        reply_markup=kb
-    )
+    await message.answer("👋 Привет! Выбери:", reply_markup=kb)
 
-# Основная логика
-@dp.message()
+@dp.message_handler()
 async def menu(message: types.Message):
     user_id = message.from_user.id
 
-    # О нас
-    if message.text == "📌 О нас":
-        await message.answer("🚀 Мы создаём Telegram-ботов под задачи бизнеса")
-
-    # Услуги
-    elif message.text == "💼 Услуги":
-        await message.answer(
-            "💼 Наши услуги:\n\n"
-            "— Боты для бизнеса\n"
-            "— Автоматизация\n"
-            "— Приём заявок\n"
-            "— Интеграции"
-        )
-
-    # Цены
-    elif message.text == "💰 Цены":
-        await message.answer(
-            "💰 Примерные цены:\n\n"
-            "— Простой бот: от 50$\n"
-            "— Средний: 100-200$\n"
-            "— Сложный: от 300$\n\n"
-            "📩 Напиши, и скажу точнее"
-        )
-
-    # Контакты
-    elif message.text == "📞 Контакты":
-        await message.answer(
-            "📞 Связь:\n\n"
-            "Telegram: @твой_ник\n"
-            "WhatsApp: +123456789"
-        )
-
-    # НАЧАЛО ЗАЯВКИ
-    elif message.text == "📝 Оставить заявку":
+    if message.text == "📝 Заявка":
         user_data[user_id] = {"step": "name"}
-        await message.answer("✍️ Напиши своё имя:")
+        await message.answer("Имя:")
 
-    # ОБРАБОТКА ЗАЯВКИ
     elif user_id in user_data:
-
         if user_data[user_id]["step"] == "name":
             user_data[user_id]["name"] = message.text
-            user_data[user_id]["step"] = "request"
-            await message.answer("📋 Опиши задачу:")
+            user_data[user_id]["step"] = "task"
+            await message.answer("Задача:")
 
-        elif user_data[user_id]["step"] == "request":
-            name = user_data[user_id]["name"]
-            request = message.text
-
-            text = (
-                f"🔥 Новая заявка!\n\n"
-                f"👤 Имя: {name}\n"
-                f"🆔 ID: {user_id}\n"
-                f"📩 Запрос: {request}"
+        elif user_data[user_id]["step"] == "task":
+            await bot.send_message(
+                ADMIN_ID,
+                f"Заявка:\n{user_data[user_id]['name']}\n{message.text}"
             )
-
-            # отправка тебе
-            await bot.send_message(ADMIN_ID, text)
-
-            await message.answer("✅ Заявка отправлена! Я скоро свяжусь с тобой")
-
+            await message.answer("Отправлено")
             del user_data[user_id]
 
-# Запуск
-async def main():
-    await dp.start_polling(bot)
+def run_server():
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"OK")
+
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), Handler)
+    server.serve_forever()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    threading.Thread(target=run_server).start()
+    executor.start_polling(dp, skip_updates=True)
