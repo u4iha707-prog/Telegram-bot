@@ -1,60 +1,80 @@
-import os
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import random
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import ReplyKeyboardMarkup
 from aiogram.utils import executor
 
-TOKEN = os.getenv("TOKEN")
-ADMIN_ID = 5585690159
+TOKEN = "ТВОЙ_ТОКЕН"
+ADMIN_ID = 123456789  # ТВОЙ ID
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
 
-kb = ReplyKeyboardMarkup(resize_keyboard=True)
-kb.add("🚀 Клиенты", "💼 Возможности")
-kb.add("💰 Цена", "📩 Связь")
-kb.add("📝 Заявка")
+users = {}
 
-user_data = {}
-
+# Старт
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message):
-    await message.answer("👋 Привет! Выбери:", reply_markup=kb)
+    await message.answer("🔥 Бот в деле!\n\nКоманды:\n/roll\n/who\n/top\n/boost")
 
+# Очки за актив
 @dp.message_handler()
-async def menu(message: types.Message):
+async def activity(message: types.Message):
     user_id = message.from_user.id
 
-    if message.text == "📝 Заявка":
-        user_data[user_id] = {"step": "name"}
-        await message.answer("Имя:")
+    if user_id not in users:
+        users[user_id] = {"name": message.from_user.first_name, "points": 0}
 
-    elif user_id in user_data:
-        if user_data[user_id]["step"] == "name":
-            user_data[user_id]["name"] = message.text
-            user_data[user_id]["step"] = "task"
-            await message.answer("Задача:")
+    users[user_id]["points"] += 1
 
-        elif user_data[user_id]["step"] == "task":
-            await bot.send_message(
-                ADMIN_ID,
-                f"Заявка:\n{user_data[user_id]['name']}\n{message.text}"
-            )
-            await message.answer("Отправлено")
-            del user_data[user_id]
+    text = message.text.lower()
 
-def run_server():
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"OK")
+    # авто-мемы
+    if "слил" in text or "проиграл" in text:
+        await message.reply("💀 Бывает брат, апнешься")
 
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), Handler)
-    server.serve_forever()
+    if "нуб" in text:
+        await message.reply("😂 Кто-то позвал меня?")
+
+# /roll
+@dp.message_handler(commands=['roll'])
+async def roll(message: types.Message):
+    num = random.randint(1, 100)
+    await message.answer(f"🎲 Выпало: {num}")
+
+# /who
+@dp.message_handler(commands=['who'])
+async def who(message: types.Message):
+    members = list(users.keys())
+    if members:
+        random_user = random.choice(members)
+        name = users[random_user]["name"]
+        await message.answer(f"😂 Нуб дня: {name}")
+    else:
+        await message.answer("Пока никого нет")
+
+# /top
+@dp.message_handler(commands=['top'])
+async def top(message: types.Message):
+    if not users:
+        await message.answer("Пока нет активности")
+        return
+
+    sorted_users = sorted(users.items(), key=lambda x: x[1]["points"], reverse=True)
+
+    text = "🏆 Топ игроков:\n\n"
+    for i, (user_id, data) in enumerate(sorted_users[:5], start=1):
+        text += f"{i}. {data['name']} — {data['points']} pts\n"
+
+    await message.answer(text)
+
+# /boost
+@dp.message_handler(commands=['boost'])
+async def boost(message: types.Message):
+    user = message.from_user
+
+    text = f"🔥 Новая заявка на буст!\n\n👤 {user.first_name}\n🆔 {user.id}"
+
+    await bot.send_message(ADMIN_ID, text)
+    await message.answer("✅ Заявка отправлена!")
 
 if __name__ == "__main__":
-    threading.Thread(target=run_server).start()
     executor.start_polling(dp, skip_updates=True)
